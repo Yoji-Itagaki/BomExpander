@@ -1,10 +1,20 @@
 # 多段階BOM展開ツール（BomTool）
 
+[![CI](https://github.com/Yoji-Itagaki/BomExpander/actions/workflows/ci.yml/badge.svg)](https://github.com/Yoji-Itagaki/BomExpander/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Yoji-Itagaki/BomExpander)](https://github.com/Yoji-Itagaki/BomExpander/releases/latest)
+
 部品表（BOM）の親子関係が入ったCSVを読み込み、製品ごとに多段階展開した部品表をExcelファイル（.xlsx）に出力するWindowsツールです。
 
 - Excelがインストールされていないパソコンでも動きます（[ClosedXML](https://github.com/ClosedXML/ClosedXML) で .xlsx を直接作成）
 - 外部への通信は一切行いません
 - 同梱のデータはすべて架空のダミーデータです
+
+## ダウンロード（すぐに試す場合）
+
+[Releases](https://github.com/Yoji-Itagaki/BomExpander/releases/latest) から `BomTool-vX.X.X-win-x64.zip` をダウンロードして展開し、`BomTool.exe` を起動します。
+.NET ランタイムを同梱しているため、追加のインストールは不要です。`samples` フォルダーのダミーCSVで動作を試せます。
+
+> 初回起動時に「Windows によって PC が保護されました」と表示された場合は、「詳細情報」→「実行」を押してください（コード署名をしていないため表示されます）。
 
 ## 動作環境
 
@@ -185,6 +195,25 @@ A-110,C-202,ファンガード,2,個,購入
 - 文字コードの判定（UTF-8 BOM付き／なし、Shift_JIS）
 - Excel出力（シート名、見出し、字下げ、累計員数、罫線、エラーシート）
 - サンプルCSVの展開結果
+
+## 自動ビルドとリリース（GitHub Actions）
+
+| 設定ファイル | 動くタイミング | 内容 |
+|---|---|---|
+| `.github/workflows/ci.yml` | main への push、Pull Request | ビルドと単体テスト |
+| `.github/workflows/release.yml` | `v` で始まるタグの push | 単体テスト → 自己完結型で発行 → zip作成 → Releases に公開 |
+
+新しいバージョンを公開する手順（例：v1.1.0）：
+
+```bash
+git tag v1.1.0
+```
+
+```bash
+git push origin v1.1.0
+```
+
+数分後に [Releases](https://github.com/Yoji-Itagaki/BomExpander/releases) に zip が公開されます。進み具合はリポジトリの「Actions」タブで確認できます。リリースの説明文の冒頭は `.github/release-notes.md` の内容で、その後ろに変更履歴が自動で追加されます。
 
 ## ライセンス
 
