@@ -40,6 +40,26 @@ Public Class SampleFileTests
 
         ' 小数の員数（配線ケーブル 1.5m）
         Assert.Equal(1.5D, FindLine(r.Expansion, "P-200", "C-413").CumulativeQuantity)
+
+        ' 逆展開：ベアリング C-222 → A-112 → A-111 → A-110 → P-100（2個）/ P-200（4個）
+        Dim bearingUsage = r.Expansion.WhereUsed.Where(Function(l) l.PartCode = "C-222").
+            Select(Function(l) (l.Level, l.ItemCode, l.CumulativeQuantity)).ToArray()
+        Assert.Equal({
+            (0, "C-222", 1D),
+            (1, "A-112", 2D),
+            (2, "A-111", 2D),
+            (3, "A-110", 2D),
+            (4, "P-100", 2D),
+            (4, "P-200", 4D)
+        }, bearingUsage)
+
+        ' 逆展開の製品の行を製品ごとに合計すると、部品集計の合計員数と一致する
+        For Each item In r.Expansion.Summary
+            Dim total = r.Expansion.WhereUsed.
+                Where(Function(l) l.PartCode = item.ItemCode AndAlso l.IsProduct AndAlso l.ItemCode = item.ProductCode).
+                Sum(Function(l) l.CumulativeQuantity)
+            Assert.Equal(item.TotalQuantity, total)
+        Next
     End Sub
 
     <Fact>

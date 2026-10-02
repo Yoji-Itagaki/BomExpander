@@ -7,12 +7,14 @@ Imports ClosedXML.Excel
 ''' 出力するシート：
 ''' ・「BOM展開」：製品ごとの多段階部品表
 ''' ・「部品集計」：製品ごと・品番ごとの合計員数
+''' ・「逆展開」　：部品ごとに、使われている組品から製品までを逆にたどった表
 ''' ・「エラー」　：読み込み・展開で見つかった問題の一覧
 ''' </summary>
 Public Class ExcelExporter
 
     Public Const BomSheetName As String = "BOM展開"
     Public Const SummarySheetName As String = "部品集計"
+    Public Const WhereUsedSheetName As String = "逆展開"
     Public Const ErrorSheetName As String = "エラー"
 
     ''' <summary>ブック全体の文字フォント</summary>
@@ -25,6 +27,7 @@ Public Class ExcelExporter
     Private Shared ReadOnly HeaderBackColor As XLColor = XLColor.FromHtml("#1F4E78")
     Private Shared ReadOnly HeaderFontColor As XLColor = XLColor.White
     Private Shared ReadOnly ProductBackColor As XLColor = XLColor.FromHtml("#DDEBF7")
+    Private Shared ReadOnly PartBackColor As XLColor = XLColor.FromHtml("#FFF2CC")
     Private Shared ReadOnly ErrorBackColor As XLColor = XLColor.FromHtml("#FCE4D6")
 
     ''' <summary>
@@ -40,6 +43,7 @@ Public Class ExcelExporter
 
             WriteBomSheet(workbook.Worksheets.Add(BomSheetName), expansion.Lines)
             WriteSummarySheet(workbook.Worksheets.Add(SummarySheetName), expansion.Summary)
+            WriteWhereUsedSheet(workbook.Worksheets.Add(WhereUsedSheetName), expansion.WhereUsed)
             WriteErrorSheet(workbook.Worksheets.Add(ErrorSheetName), errors.ToList())
 
             workbook.Worksheet(1).SetTabActive()
@@ -88,6 +92,7 @@ Public Class ExcelExporter
 
         Dim r = 2
         Dim previousProduct As String = Nothing
+        Dim separatorRows As New List(Of Integer)
         For Each item In summary
             sheet.Cell(r, 1).Value = item.ProductCode
             sheet.Cell(r, 2).Value = item.Procurement
@@ -97,9 +102,7 @@ Public Class ExcelExporter
             sheet.Cell(r, 6).Value = item.Unit
             sheet.Cell(r, 7).Value = item.UsageCount
 
-            If previousProduct IsNot Nothing AndAlso previousProduct <> item.ProductCode Then
-                sheet.Range(r, 1, r, headers.Length).Style.Border.TopBorder = XLBorderStyleValues.Medium
-            End If
+            If previousProduct IsNot Nothing AndAlso previousProduct <> item.ProductCode Then separatorRows.Add(r)
             previousProduct = item.ProductCode
             r += 1
         Next
@@ -107,6 +110,51 @@ Public Class ExcelExporter
         sheet.Column(2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center
         sheet.Column(6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center
         FinishSheet(sheet, headers.Length, r - 1)
+        DrawSeparators(sheet, separatorRows, headers.Length)
+    End Sub
+
+    ''' <summary>
+    ''' 「逆展開」シートを作ります。品番はレベルに応じて字下げします。
+    ''' 部品自身の行（レベル0）と製品の行は色付き・太字にし、部品が切り替わる行の上に太線を引きます。
+    ''' 「部品品番」列で絞り込むと、1つの部品の使用先だけを見られます。
+    ''' </summary>
+    Private Sub WriteWhereUsedSheet(sheet As IXLWorksheet, lines As IList(Of WhereUsedLine))
+        Dim headers = {"部品品番", "部品品名", "レベル", "品番", "品名", "員数",
+                       "累計員数" & vbLf & "（この品番1個あたり）", "単位", "手配区分", "製品"}
+        WriteHeader(sheet, headers)
+
+        Dim r = 2
+        Dim separatorRows As New List(Of Integer)
+        For Each line In lines
+            sheet.Cell(r, 1).Value = line.PartCode
+            sheet.Cell(r, 2).Value = line.PartName
+            sheet.Cell(r, 3).Value = line.Level
+            sheet.Cell(r, 4).Value = line.ItemCode
+            sheet.Cell(r, 4).Style.Alignment.Indent = line.Level * 2   ' レベル1つにつき2文字分の字下げ
+            sheet.Cell(r, 5).Value = line.ItemName
+            If line.Quantity.HasValue Then sheet.Cell(r, 6).Value = line.Quantity.Value
+            sheet.Cell(r, 7).Value = line.CumulativeQuantity
+            sheet.Cell(r, 8).Value = line.Unit
+            sheet.Cell(r, 9).Value = line.Procurement
+            If line.IsProduct Then sheet.Cell(r, 10).Value = line.ItemCode
+
+            Dim rowRange = sheet.Range(r, 1, r, headers.Length)
+            If line.Level = 0 Then
+                rowRange.Style.Fill.BackgroundColor = PartBackColor
+                rowRange.Style.Font.Bold = True
+                If r > 2 Then separatorRows.Add(r)
+            ElseIf line.IsProduct Then
+                rowRange.Style.Fill.BackgroundColor = ProductBackColor
+                rowRange.Style.Font.Bold = True
+            End If
+            r += 1
+        Next
+
+        sheet.Column(3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center
+        sheet.Column(8).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center
+        sheet.Column(9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center
+        FinishSheet(sheet, headers.Length, r - 1)
+        DrawSeparators(sheet, separatorRows, headers.Length)
     End Sub
 
     ''' <summary>
@@ -193,6 +241,19 @@ Public Class ExcelExporter
             .Footer.Center.AddText(XLHFPredefinedText.NumberOfPages)
         End With
         sheet.PageSetup.PrintAreas.Add(1, 1, Math.Max(1, lastRow), columnCount)
+    End Sub
+
+    ''' <summary>
+    ''' 指定した行の上に区切りの太線を引きます。
+    ''' FinishSheet の罫線（内側は細線）で上書きされないよう、FinishSheet の後に呼び出します。
+    ''' </summary>
+    ''' <param name="rows">太線を引く行（その行の上に引きます）</param>
+    ''' <param name="columnCount">列数</param>
+    Private Shared Sub DrawSeparators(sheet As IXLWorksheet, rows As IEnumerable(Of Integer), columnCount As Integer)
+        For Each r In rows
+            sheet.Range(r, 1, r, columnCount).Style.Border.TopBorder = XLBorderStyleValues.Medium
+            sheet.Range(r - 1, 1, r - 1, columnCount).Style.Border.BottomBorder = XLBorderStyleValues.Medium
+        Next
     End Sub
 
     ''' <summary>

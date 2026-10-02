@@ -9,6 +9,9 @@ Public Class ExpandedLine
     ''' <summary>レベル（0が製品、その下が1、2…）</summary>
     Public Property Level As Integer
 
+    ''' <summary>直上の親の品番（レベル0の製品は空です）</summary>
+    Public Property ParentCode As String = ""
+
     ''' <summary>品番</summary>
     Public Property ItemCode As String = ""
 

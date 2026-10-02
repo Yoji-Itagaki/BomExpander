@@ -4,7 +4,7 @@
 ''' ・最上位の品番（どの行の子品番にもなっていない親品番）を製品として扱います。
 ''' ・製品から下へ順にたどり（深さ優先）、累計員数 ＝ 上位の員数をすべて掛け合わせた値 を計算します。
 ''' ・循環参照（A→B→A など）を見つけたら、その経路の展開を止めてエラーに記録します。
-''' ・展開結果から、製品ごと・品番ごとの集計も作ります。
+''' ・展開結果から、製品ごと・品番ごとの集計と、部品から製品までの逆展開も作ります。
 ''' </summary>
 Public Class BomTreeExpander
 
@@ -50,6 +50,9 @@ Public Class BomTreeExpander
 
         ' 4) 部品集計を作る
         result.Summary = Summarize(result.Lines, result.Products)
+
+        ' 5) 部品ごとに製品までを逆にたどる（逆展開）
+        result.WhereUsed = WhereUsedBuilder.Build(result.Lines, MaxLines)
         Return result
     End Function
 
@@ -84,6 +87,7 @@ Public Class BomTreeExpander
             lines.Add(New ExpandedLine With {
                 .ProductCode = productCode,
                 .Level = level,
+                .ParentCode = parentCode,
                 .ItemCode = row.ChildCode,
                 .ItemName = row.ItemName,
                 .Quantity = row.Quantity,

@@ -22,9 +22,9 @@ Public Class ExcelExporterTests
     End Function
 
     <Fact>
-    Public Sub 三つのシートが作られ見出し行が固定される()
+    Public Sub 四つのシートが作られ見出し行が固定される()
         Using wb = ExportAndOpen(Csv("P,A,部品A,2,個,購入"))
-            Assert.Equal({"BOM展開", "部品集計", "エラー"}, wb.Worksheets.Select(Function(s) s.Name))
+            Assert.Equal({"BOM展開", "部品集計", "逆展開", "エラー"}, wb.Worksheets.Select(Function(s) s.Name))
             For Each sheet In wb.Worksheets
                 Assert.Equal(1, sheet.SheetView.SplitRow)
                 Assert.True(sheet.Cell(1, 1).Style.Font.Bold)
@@ -58,6 +58,54 @@ Public Class ExcelExporterTests
             Assert.Equal(6D, sheet.Cell(4, 5).GetValue(Of Decimal)())
             Assert.Equal("本", sheet.Cell(4, 6).GetString())
             Assert.Equal("購入", sheet.Cell(4, 7).GetString())
+        End Using
+    End Sub
+
+    <Fact>
+    Public Sub 逆展開シートに部品から製品までの経路を出力する()
+        Using wb = ExportAndOpen(Csv(
+                "P,A,組品A,2,個,内製",
+                "A,B,部品B,3,本,購入"))
+            Dim sheet = wb.Worksheet("逆展開")
+            Assert.Equal("部品品番", sheet.Cell(1, 1).GetString())
+            Assert.Equal("製品", sheet.Cell(1, 10).GetString())
+
+            ' 2〜3行目：部品A（A → P）、4〜6行目：部品B（B → A → P）
+            Dim codes = Enumerable.Range(2, 5).Select(Function(r) (sheet.Cell(r, 1).GetString(), sheet.Cell(r, 4).GetString())).ToArray()
+            Assert.Equal({("A", "A"), ("A", "P"), ("B", "B"), ("B", "A"), ("B", "P")}, codes)
+
+            ' 部品自身の行：員数は空、累計員数1、色付き。部品が切り替わる行の上は太線
+            Assert.True(sheet.Cell(4, 6).IsEmpty())
+            Assert.Equal(1D, sheet.Cell(4, 7).GetValue(Of Decimal)())
+            Assert.True(sheet.Cell(4, 1).Style.Font.Bold)
+            Assert.Equal(XLBorderStyleValues.Medium, sheet.Cell(4, 1).Style.Border.TopBorder)
+
+            ' 組品Aの行：字下げ2文字、員数3、累計員数3
+            Assert.Equal(2, sheet.Cell(5, 4).Style.Alignment.Indent)
+            Assert.Equal("組品A", sheet.Cell(5, 5).GetString())
+            Assert.Equal(3D, sheet.Cell(5, 6).GetValue(Of Decimal)())
+            Assert.Equal(3D, sheet.Cell(5, 7).GetValue(Of Decimal)())
+            Assert.Equal("内製", sheet.Cell(5, 9).GetString())
+            Assert.True(sheet.Cell(5, 10).IsEmpty())
+
+            ' 製品の行：累計員数 3×2=6（製品1台あたりの部品Bの数）、単位は部品Bの単位、製品列に品番
+            Assert.Equal(6D, sheet.Cell(6, 7).GetValue(Of Decimal)())
+            Assert.Equal("本", sheet.Cell(6, 8).GetString())
+            Assert.Equal("P", sheet.Cell(6, 10).GetString())
+            Assert.True(sheet.Cell(6, 4).Style.Font.Bold)
+        End Using
+    End Sub
+
+    <Fact>
+    Public Sub 部品集計シートは製品が切り替わる行の上に太線を引く()
+        Using wb = ExportAndOpen(Csv(
+                "P1,A,部品A,1,個,購入",
+                "P1,B,部品B,1,個,購入",
+                "P2,A,部品A,1,個,購入"))
+            Dim sheet = wb.Worksheet("部品集計")
+            Assert.Equal("P2", sheet.Cell(4, 1).GetString())
+            Assert.Equal(XLBorderStyleValues.Medium, sheet.Cell(4, 1).Style.Border.TopBorder)
+            Assert.Equal(XLBorderStyleValues.Thin, sheet.Cell(3, 1).Style.Border.TopBorder)
         End Using
     End Sub
 

@@ -12,6 +12,9 @@ Public Class BomExpansionResult
     ''' <summary>製品ごと・品番ごとの集計</summary>
     Public Property Summary As New List(Of SummaryLine)
 
+    ''' <summary>部品ごとに製品までを逆にたどった結果（逆展開）</summary>
+    Public Property WhereUsed As New List(Of WhereUsedLine)
+
     ''' <summary>展開時に見つかったエラー（循環参照など）</summary>
     Public ReadOnly Property Errors As New List(Of BomError)
 
