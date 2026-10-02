@@ -1,0 +1,11 @@
+<Project>
+  <!-- すべてのプロジェクトに共通する設定 -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <OptionStrict>On</OptionStrict>
+    <OptionExplicit>On</OptionExplicit>
+    <OptionInfer>On</OptionInfer>
+    <OptionCompare>Binary</OptionCompare>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

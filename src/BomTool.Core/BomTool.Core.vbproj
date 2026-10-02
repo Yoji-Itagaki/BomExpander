@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CSV読み込み・BOM展開・Excel出力を行うクラスライブラリ（画面には依存しない） -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BomTool.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Excelがインストールされていなくても .xlsx を作成できるライブラリ -->
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BomTool.Tests" />
+  </ItemGroup>
+
+</Project>
