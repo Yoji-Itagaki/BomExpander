@@ -9,6 +9,12 @@
 - 外部への通信は一切行いません
 - 同梱のデータはすべて架空のダミーデータです
 
+## 変換イメージ
+
+親子関係を1段ずつ書いたCSVから、製品ごとに展開したツリーと累計員数（製品1台あたりの数量）をExcelに出力します。累計員数は、製品からその部品までの経路にある員数を掛け合わせて求めます。
+
+![sample_normal.csv から sample_normal_BOM展開.xlsx への変換イメージ](docs/images/bom-conversion.png)
+
 ## ダウンロード（すぐに試す場合）
 
 [Releases](https://github.com/Yoji-Itagaki/BomExpander/releases/latest) から `BomTool-vX.X.X-win-x64.zip` をダウンロードして展開し、`BomTool.exe` を起動します。
@@ -41,6 +47,8 @@ BomTool/
 │     └─ MainForm.vb          … メイン画面
 ├─ tests/
 │  └─ BomTool.Tests/         … 単体テスト（xUnit）
+├─ docs/
+│  └─ images/                … README用の画像
 └─ samples/
    ├─ sample_normal.csv      … 正常なダミーデータ（UTF-8 BOM付き）
    ├─ sample_errors.csv      … エラーを含むダミーデータ（Shift_JIS）
