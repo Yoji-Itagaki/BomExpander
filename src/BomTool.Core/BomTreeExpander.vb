@@ -4,6 +4,7 @@
 ''' ・最上位の品番（どの行の子品番にもなっていない親品番）を製品として扱います。
 ''' ・製品から下へ順にたどり（深さ優先）、累計員数 ＝ 上位の員数をすべて掛け合わせた値 を計算します。
 ''' ・循環参照（A→B→A など）を見つけたら、その経路の展開を止めてエラーに記録します。
+''' ・階層が上限（MaxDepth）より深くなったら、その経路の展開を止めてエラーに記録します。
 ''' ・展開結果から、製品ごと・品番ごとの集計と、部品から製品までの逆展開も作ります。
 ''' </summary>
 Public Class BomTreeExpander
@@ -13,6 +14,14 @@ Public Class BomTreeExpander
     ''' </summary>
     Public Property MaxLines As Integer = 1_000_000
 
+    ''' <summary>階層の上限の既定値です。</summary>
+    Public Const DefaultMaxDepth As Integer = 100
+
+    ''' <summary>
+    ''' 階層（レベル）の上限です。極端に深い部品表で処理が異常終了（スタックオーバーフロー）しないようにするためのものです。
+    ''' </summary>
+    Public Property MaxDepth As Integer = DefaultMaxDepth
+
     ''' <summary>
     ''' 部品表を多段階に展開します。
     ''' </summary>
@@ -20,7 +29,7 @@ Public Class BomTreeExpander
     Public Function Expand(rows As IEnumerable(Of BomRow)) As BomExpansionResult
         Dim result As New BomExpansionResult()
         Dim rowList = rows.ToList()
-        Dim context As New ExpandContext(rowList, result.Errors)
+        Dim context As New ExpandContext(rowList, result.Errors, MaxDepth)
 
         ' 1) 最上位の品番（親品番として出てくるが、どこにも子品番として出てこないもの）を探す
         Dim topCodes = context.ParentOrder.Where(Function(p) Not context.ChildCodes.Contains(p)).ToList()
@@ -52,7 +61,7 @@ Public Class BomTreeExpander
         result.Summary = Summarize(result.Lines, result.Products)
 
         ' 5) 部品ごとに製品までを逆にたどる（逆展開）
-        result.WhereUsed = WhereUsedBuilder.Build(result.Lines, MaxLines)
+        result.WhereUsed = WhereUsedBuilder.Build(result.Lines, MaxLines, MaxDepth)
         Return result
     End Function
 
@@ -75,6 +84,12 @@ Public Class BomTreeExpander
             Dim loopStart = path.IndexOf(row.ChildCode)
             If loopStart >= 0 Then
                 context.ReportCycle(path.Skip(loopStart).ToList(), row)
+                Continue For
+            End If
+
+            ' 階層が上限を超える場合は、この先は展開しません。
+            If level > MaxDepth Then
+                context.ReportTooDeep(path, row)
                 Continue For
             End If
 
@@ -107,6 +122,7 @@ Public Class BomTreeExpander
     ''' <summary>
     ''' 製品から一度もたどらなかった品番について、ループがないかを調べます。
     ''' （例：X→Y→X だけの組で、上に製品がない場合）
+    ''' 階層が上限を超えたら、エラーを1件記録してこの確認全体を中止します。
     ''' </summary>
     Private Sub DetectUnreachableCycles(context As ExpandContext)
         ' 0：未訪問、1：調査中（経路上にある）、2：調査済み
@@ -115,15 +131,16 @@ Public Class BomTreeExpander
 
         For Each code In context.ParentOrder
             If context.Visited.Contains(code) OrElse state.ContainsKey(code) Then Continue For
-            VisitForCycle(code, state, path, context)
+            If Not VisitForCycle(code, state, path, context) Then Exit For
         Next
     End Sub
 
     ''' <summary>
     ''' 深さ優先でたどり、調査中の品番に戻ってきたらループとして記録します。
     ''' </summary>
-    Private Sub VisitForCycle(code As String, state As Dictionary(Of String, Integer),
-                              path As List(Of String), context As ExpandContext)
+    ''' <returns>階層が上限を超えて確認を中止した場合は False</returns>
+    Private Function VisitForCycle(code As String, state As Dictionary(Of String, Integer),
+                                   path As List(Of String), context As ExpandContext) As Boolean
         state(code) = 1
         path.Add(code)
 
@@ -135,14 +152,20 @@ Public Class BomTreeExpander
                 If childState = 1 Then
                     context.ReportCycle(path.Skip(path.IndexOf(row.ChildCode)).ToList(), row)
                 ElseIf childState = 0 AndAlso Not context.Visited.Contains(row.ChildCode) Then
-                    VisitForCycle(row.ChildCode, state, path, context)
+                    ' 階層が上限を超える場合は、ここで確認を中止します。
+                    If path.Count >= MaxDepth Then
+                        context.ReportTooDeep(path, row)
+                        Return False
+                    End If
+                    If Not VisitForCycle(row.ChildCode, state, path, context) Then Return False
                 End If
             Next
         End If
 
         path.RemoveAt(path.Count - 1)
         state(code) = 2
-    End Sub
+        Return True
+    End Function
 
     ''' <summary>
     ''' 展開結果から、製品ごとに同じ品番の累計員数を合算します。
@@ -198,10 +221,15 @@ Public Class BomTreeExpander
         ''' <summary>記録済みのループ（同じループを何度も記録しないため）</summary>
         Private ReadOnly _reportedCycles As New HashSet(Of String)(StringComparer.Ordinal)
 
-        Private ReadOnly _errors As List(Of BomError)
+        ''' <summary>階層の上限を超えたと記録済みの行（同じ行を何度も記録しないため）</summary>
+        Private ReadOnly _reportedTooDeep As New HashSet(Of Integer)
 
-        Public Sub New(rows As List(Of BomRow), errors As List(Of BomError))
+        Private ReadOnly _errors As List(Of BomError)
+        Private ReadOnly _maxDepth As Integer
+
+        Public Sub New(rows As List(Of BomRow), errors As List(Of BomError), maxDepth As Integer)
             _errors = errors
+            _maxDepth = maxDepth
             For Each row In rows
                 Dim children As List(Of BomRow) = Nothing
                 If Not ChildrenOf.TryGetValue(row.ParentCode, children) Then
@@ -232,6 +260,19 @@ Public Class BomTreeExpander
             _errors.Add(New BomError(closingRow.LineNumber, BomErrorKind.CircularReference,
                 $"循環参照を検出しました：{route}。この経路の展開を中止しました。",
                 $"親品番={closingRow.ParentCode}, 子品番={closingRow.ChildCode}"))
+        End Sub
+
+        ''' <summary>
+        ''' 階層が上限を超えたことをエラーに記録します。同じ行はどこから見つけても1回だけ記録します。
+        ''' </summary>
+        ''' <param name="path">上限まで下りてきた経路（先頭がたどり始めた品番）</param>
+        ''' <param name="row">上限を超える行（これ以上下りない行）</param>
+        Public Sub ReportTooDeep(path As List(Of String), row As BomRow)
+            If Not _reportedTooDeep.Add(row.LineNumber) Then Return
+
+            _errors.Add(New BomError(row.LineNumber, BomErrorKind.TooDeep,
+                $"階層が{_maxDepth:#,0}段を超えたため、この先をたどるのを中止しました：{path(0)} → … → {row.ParentCode} → {row.ChildCode}。部品表の構成を確認してください。",
+                $"親品番={row.ParentCode}, 子品番={row.ChildCode}"))
         End Sub
 
     End Class

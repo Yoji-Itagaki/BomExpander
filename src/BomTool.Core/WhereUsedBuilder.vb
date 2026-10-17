@@ -15,8 +15,10 @@ Public Class WhereUsedBuilder
     ''' </summary>
     ''' <param name="lines">BomTreeExpander の展開結果</param>
     ''' <param name="maxLines">作る行の上限（Excelの行数上限を超えないようにするため）</param>
-    Public Shared Function Build(lines As IEnumerable(Of ExpandedLine), maxLines As Integer) As List(Of WhereUsedLine)
-        Dim context As New BuildContext(lines.ToList(), maxLines)
+    ''' <param name="maxDepth">たどる階層の上限（処理が異常終了しないようにするため）</param>
+    Public Shared Function Build(lines As IEnumerable(Of ExpandedLine), maxLines As Integer,
+                                 Optional maxDepth As Integer = BomTreeExpander.DefaultMaxDepth) As List(Of WhereUsedLine)
+        Dim context As New BuildContext(lines.ToList(), maxLines, maxDepth)
         Dim result As New List(Of WhereUsedLine)
 
         For Each partCode In context.PartCodes
@@ -85,6 +87,11 @@ Public Class WhereUsedBuilder
                 Continue For
             End If
 
+            If level >= context.MaxDepth Then
+                Throw New InvalidOperationException(
+                    $"逆展開の階層が{context.MaxDepth:#,0}段を超えたため処理を中止しました（部品 {part.PartCode}）。部品表の構成を確認してください。")
+            End If
+
             path.Add(parent.ParentCode)
             Dim upper = BuildParents(part, parent.ParentCode, level + 1, cumulative, path, context)
             path.RemoveAt(path.Count - 1)
@@ -116,11 +123,15 @@ Public Class WhereUsedBuilder
         ''' <summary>逆展開する部品（製品以外の品番）を品番の順に並べたもの</summary>
         Public ReadOnly PartCodes As List(Of String)
 
+        ''' <summary>たどる階層の上限</summary>
+        Public ReadOnly MaxDepth As Integer
+
         Private ReadOnly _maxLines As Integer
         Private _lineCount As Integer
 
-        Public Sub New(lines As List(Of ExpandedLine), maxLines As Integer)
+        Public Sub New(lines As List(Of ExpandedLine), maxLines As Integer, maxDepth As Integer)
             _maxLines = maxLines
+            Me.MaxDepth = maxDepth
             For Each line In lines
                 If line.Level = 0 Then
                     Products.Add(line.ItemCode)

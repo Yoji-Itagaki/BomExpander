@@ -133,4 +133,16 @@ Public Class WhereUsedBuilderTests
         Assert.Throws(Of InvalidOperationException)(Function() WhereUsedBuilder.Build(lines, 4))
     End Sub
 
+    <Fact>
+    Public Sub 逆展開の階層が上限を超えたら例外にする()
+        Dim lines = New BomTreeExpander().Expand(New CsvBomReader().ReadText(Csv(
+            "P,A,組品A,1,個,内製",
+            "A,B,組品B,1,個,内製",
+            "B,C,部品C,1,個,購入")).Rows).Lines
+
+        ' C → B → A → P（製品はレベル3）
+        Assert.NotEmpty(WhereUsedBuilder.Build(lines, 1000, 3))
+        Assert.Throws(Of InvalidOperationException)(Function() WhereUsedBuilder.Build(lines, 1000, 2))
+    End Sub
+
 End Class

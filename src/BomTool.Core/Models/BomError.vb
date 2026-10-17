@@ -16,6 +16,8 @@ Public Enum BomErrorKind
     CircularReference
     ''' <summary>最上位の品番（製品）が1つも見つからない</summary>
     NoTopLevelItem
+    ''' <summary>階層が上限より深い</summary>
+    TooDeep
 End Enum
 
 ''' <summary>
@@ -58,6 +60,7 @@ Public Class BomError
                 Case BomErrorKind.DuplicateRelation : Return "親子の重複"
                 Case BomErrorKind.CircularReference : Return "循環参照"
                 Case BomErrorKind.NoTopLevelItem : Return "製品なし"
+                Case BomErrorKind.TooDeep : Return "階層が深すぎる"
                 Case Else : Return Kind.ToString()
             End Select
         End Get

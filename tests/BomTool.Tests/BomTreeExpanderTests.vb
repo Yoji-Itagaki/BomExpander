@@ -192,6 +192,57 @@ Public Class BomTreeExpanderTests
 
 #End Region
 
+#Region "階層の上限"
+
+    ''' <summary>A0 → A1 → … → A(count) の一本道の行を作ります。loopBack が True なら最後に A(count) → A0 の行を足します。</summary>
+    Private Shared Function ChainRows(count As Integer, Optional loopBack As Boolean = False) As String()
+        Dim lines = Enumerable.Range(0, count).Select(Function(i) $"A{i},A{i + 1},組品,1,個,内製").ToList()
+        If loopBack Then lines.Add($"A{count},A0,組品,1,個,内製")
+        Return lines.ToArray()
+    End Function
+
+    <Fact>
+    Public Sub 階層が上限ちょうどなら最後まで展開する()
+        Dim rows = New CsvBomReader().ReadText(Csv(ChainRows(5))).Rows
+        Dim result = New BomTreeExpander With {.MaxDepth = 5}.Expand(rows)
+
+        Assert.Empty(result.Errors)
+        Assert.Equal(5, result.Lines.Max(Function(l) l.Level))
+    End Sub
+
+    <Fact>
+    Public Sub 階層が上限を超えたらその先を展開せずエラーにする()
+        Dim rows = New CsvBomReader().ReadText(Csv(ChainRows(8))).Rows
+        Dim result = New BomTreeExpander With {.MaxDepth = 5}.Expand(rows)
+
+        Dim depthError = Assert.Single(result.Errors)
+        Assert.Equal(BomErrorKind.TooDeep, depthError.Kind)
+        Assert.Equal(7, depthError.LineNumber)               ' レベル6になる行（A5→A6）
+        Assert.Contains("A0 → … → A5 → A6", depthError.Message)
+        Assert.Equal(5, result.Lines.Max(Function(l) l.Level))
+    End Sub
+
+    <Fact>
+    Public Sub 製品のない長いループでも異常終了せずエラーにする()
+        ' 上限なしで再帰すると StackOverflowException でプロセスごと終了する長さ
+        Dim r = ReadAndExpand(Csv(ChainRows(100_000, loopBack:=True)))
+
+        Assert.Empty(r.Expansion.Products)
+        Assert.Contains(r.Expansion.Errors, Function(e) e.Kind = BomErrorKind.NoTopLevelItem)
+        Assert.Single(r.Expansion.Errors, Function(e) e.Kind = BomErrorKind.TooDeep)
+    End Sub
+
+    <Fact>
+    Public Sub 製品から長い一本道が続いても異常終了せずエラーにする()
+        Dim r = ReadAndExpand(Csv(ChainRows(100_000)))
+
+        Assert.Equal({"A0"}, r.Expansion.Products)
+        Assert.Contains(r.Expansion.Errors, Function(e) e.Kind = BomErrorKind.TooDeep)
+        Assert.Equal(BomTreeExpander.DefaultMaxDepth, r.Expansion.Lines.Max(Function(l) l.Level))
+    End Sub
+
+#End Region
+
     <Fact>
     Public Sub 展開行が上限を超えたら例外にする()
         Dim rows = New CsvBomReader().ReadText(Csv(
